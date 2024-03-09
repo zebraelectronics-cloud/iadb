@@ -59,9 +59,9 @@ function loadFile($url, $destination = false, $expiry = false)
     return false;
 }
 
-function parsePath($path) {
-    $parts = explode('/', strtolower($path));
-    if (count($parts) !== 3 || empty($parts[0]) || empty($parts[1])) {
+function parseDetail($parts)
+{
+    if (count($parts) !== 3 || empty($parts[0]) || empty($parts[1]) ) {
         return false;
     }
 
@@ -94,63 +94,126 @@ function parsePath($path) {
     ];
 }
 
+function parseList($parts)
+{
+    $path = implode('/', $parts);
+    if (strlen($path) < 6 || substr($path, -5) !== '.json') {
+        return false;
+    }
+
+    return $path;
+}
+
+function parsePath($path) {
+    $parts = explode('/', strtolower($path));
+    $category = array_shift($parts);
+
+    switch ($category) {
+        default:
+            return false;
+        case 'detail':
+            return [$category, parseDetail($parts)];
+        case 'list':
+            return [$category, parseList($parts)];
+    }
+}
+
 $path = trim(isset($_GET['path']) ? $_GET['path'] : '', '/');
-$parsedPath = parsePath($path);
 
-if (!$parsedPath) {
+$parsedPathWithCategory = parsePath($path);
+
+if (!$parsedPathWithCategory || !$parsedPathWithCategory[1]) {
     http_response_code(404);
     exit("404 Not found");
 }
 
-list($country, $subject, $id) = $parsedPath;
+function responseJson($data)
+{
+    http_response_code(200);
+    header('Content-Type: application/json');
+    header('Cache-Control: Public');
+    header('Max-Age: 86400');
+    exit(json_encode($data));
+}
 
-$indexFilePath = "./iadb/$country/$subject/index.json";
-$indexFileUrl = "$baseUrl/$country/$subject/index.json";
-$indexFileData = loadFile($indexFilePath, false, time() - 86400);
+function responseDetail($parsedPath, $baseUrl)
+{
+    list($country, $subject, $id) = $parsedPath;
 
-if (!$indexFileData) {
-    $indexFileData = loadFile($indexFileUrl, $indexFilePath);
+    $indexFilePath = "./iadb/$country/$subject/index.json";
+    $indexFileUrl = "$baseUrl/$country/$subject/index.json";
+    $indexFileData = loadFile($indexFilePath, false, time() - 86400);
+
     if (!$indexFileData) {
+        $indexFileData = loadFile($indexFileUrl, $indexFilePath);
+        if (!$indexFileData) {
+            http_response_code(404);
+            exit("404 Not found");
+        }
+    }
+
+    $definition = null;
+
+    foreach ($indexFileData as $entry) {
+        if ($id >= $entry['min'] && $id <= $entry['max']) {
+            $definition = $entry;
+            break;
+        }
+    }
+
+    if (!$definition) {
         http_response_code(404);
         exit("404 Not found");
     }
-}
 
-$definition = null;
+    $batchFileName = $definition['fileName'];
+    $batchFileTime = $definition['lastUpdate'];
+    $batchFilePath = "./iadb/$country/$subject/$batchFileName";
+    $batchFileUrl = "$baseUrl/$country/$subject/$batchFileName";
+    $batchFileData = loadFile($batchFilePath, false, $batchFileTime);
 
-foreach ($indexFileData as $entry) {
-    if ($id >= $entry['min'] && $id <= $entry['max']) {
-        $definition = $entry;
-        break;
-    }
-}
-
-if (!$definition) {
-    http_response_code(404);
-    exit("404 Not found");
-}
-
-$batchFileName = $definition['fileName'];
-$batchFileTime = $definition['lastUpdate'];
-$batchFilePath = "./iadb/$country/$subject/$batchFileName";
-$batchFileUrl = "$baseUrl/$country/$subject/$batchFileName";
-$batchFileData = loadFile($batchFilePath, false, $batchFileTime);
-
-if (!$batchFileData) {
-    $batchFileData = loadFile($batchFileUrl, $batchFilePath);
     if (!$batchFileData) {
+        $batchFileData = loadFile($batchFileUrl, $batchFilePath);
+        if (!$batchFileData) {
+            http_response_code(404);
+            exit("404 Not found");
+        }
+    }
+
+    if (!array_key_exists($id, $batchFileData)) {
         http_response_code(404);
         exit("404 Not found");
     }
+
+    responseJson($batchFileData[$id]);
 }
 
-if (!array_key_exists($id, $batchFileData)) {
-    http_response_code(404);
-    exit("404 Not found");
+function responseList($path, $baseUrl)
+{
+    $filePath = "./iadb-list/$path";
+    $fileUrl = "$baseUrl/$path";
+    $fileData = loadFile($filePath, false, time() - 86400);
+
+    if (!$fileData) {
+        $fileData = loadFile($fileUrl, $filePath);
+    }
+
+    if (!$fileData) {
+        http_response_code(404);
+        exit("404 Not found");
+    }
+
+    responseJson($fileData);
 }
 
-http_response_code(200);
-header('Content-Type: application/json');
-header('Cache-Control: Public');
-header('Max-Age: 86400');
-exit(json_encode($batchFileData[$id]));
+switch ($parsedPathWithCategory[0]) {
+    case 'detail':
+        responseDetail($parsedPathWithCategory[1], $baseUrl);
+        break;
+    case 'list':
+        responseList($parsedPathWithCategory[1], $baseUrl);
+        break;
+}
+
+
+
