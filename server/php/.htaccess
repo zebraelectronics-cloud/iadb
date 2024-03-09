@@ -1,9 +1,22 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
+    
+    # Handle rewriting for clean URLs
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.*)$ index.php?path=$1 [L,QSA]
+
+    # Handle conditional 304 Not Modified responses
+    RewriteCond %{REQUEST_METHOD} GET
+    RewriteCond %{HTTP:If-Modified-Since} .+
+    RewriteCond %{HTTP:If-None-Match} !^.+$
+    RewriteCond %{HTTP:If-Modified-Since} ^(.+)$
+    RewriteCond %{TIME} -d
+    RewriteCond %1 -d
+    RewriteCond %{TIME} -t
+    RewriteCond %1 -t
+    RewriteRule .* - [L,R=304]
 </IfModule>
 
 <IfModule mod_expires.c>
@@ -22,17 +35,4 @@
 
 <IfModule mod_headers.c>
     Header set Cache-Control "max-age=86400, public"
-</IfModule>
-
-<IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteCond %{REQUEST_METHOD} GET
-    RewriteCond %{HTTP:If-Modified-Since} .+
-    RewriteCond %{HTTP:If-None-Match} !^.+$
-    RewriteCond %{HTTP:If-Modified-Since} ^(.+)$
-    RewriteCond %{TIME} -d
-    RewriteCond %1 -d
-    RewriteCond %{TIME} -t
-    RewriteCond %1 -t
-    RewriteRule .* - [L,R=304]
 </IfModule>
