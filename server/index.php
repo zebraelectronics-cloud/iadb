@@ -131,8 +131,6 @@ function responseJson($data)
 {
     http_response_code(200);
     header('Content-Type: application/json');
-    header('Cache-Control: Public');
-    header('Max-Age: 86400');
     exit(json_encode($data));
 }
 
