@@ -1,5 +1,6 @@
 <?php
-$baseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/data";
+
+// Utility functions
 
 function loadFile($url, $destination = false, $expiry = false)
 {
@@ -118,15 +119,6 @@ function parsePath($path) {
     }
 }
 
-$path = trim(isset($_GET['path']) ? $_GET['path'] : '', '/');
-
-$parsedPathWithCategory = parsePath($path);
-
-if (!$parsedPathWithCategory || !$parsedPathWithCategory[1]) {
-    http_response_code(404);
-    exit("404 Not found");
-}
-
 function responseJson($data)
 {
     http_response_code(200);
@@ -204,6 +196,19 @@ function responseList($path, $baseUrl)
     responseJson($fileData);
 }
 
+// Request handler
+
+$baseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/data";
+
+$path = trim(isset($_GET['path']) ? $_GET['path'] : '', '/');
+
+$parsedPathWithCategory = parsePath($path);
+
+if (!$parsedPathWithCategory || !$parsedPathWithCategory[1]) {
+    http_response_code(404);
+    exit("404 Not found");
+}
+
 switch ($parsedPathWithCategory[0]) {
     case 'detail':
         responseDetail($parsedPathWithCategory[1], $baseUrl);
@@ -211,7 +216,7 @@ switch ($parsedPathWithCategory[0]) {
     case 'list':
         responseList($parsedPathWithCategory[1], $baseUrl);
         break;
+    default:
+        http_response_code(404);
+        exit("404 Not found");
 }
-
-
-
