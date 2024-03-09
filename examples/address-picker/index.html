@@ -18,9 +18,9 @@
     </style>
 
     <script type="module">
-        import AddressApi from "http://localhost:20001/js/address-api.js";
+        import AddressApi from "https://iadb.fast-page.org/static/assets/js/address-api.js";
 
-        const addressApi = new AddressApi("https://iadb.fast-page.org/");
+        const addressApi = new AddressApi();
         console.log(await addressApi.loadCountries());
 
         customElements.define("ap-loader",
