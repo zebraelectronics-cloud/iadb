@@ -1,8 +1,12 @@
 <?php
 
 // Utility functions
+function get_extension($path) {
+    $path_parts = pathinfo($path);
+    return $path_parts['extension'];
+}
 
-function loadFile($url, $destination = false, $expiry = false)
+function loadFile($url, $destination = false, $expiry = false, $parseAsJson = true)
 {
     global $memoryCache;
 
@@ -33,7 +37,7 @@ function loadFile($url, $destination = false, $expiry = false)
         try {
             $memoryCache[$url] = [
                 'expiry' => $expiry ? time() + $expiry : false,
-                'data' => json_decode($file, true),
+                'data' => $parseAsJson ? json_decode($file, true) : $file,
             ];
             return $memoryCache[$url]['data'];
         } catch (Exception $exception) {
@@ -50,7 +54,7 @@ function loadFile($url, $destination = false, $expiry = false)
         try {
             $memoryCache[$url] = [
                 'expiry' => $expiry ? time() + $expiry : false,
-                'data' => json_decode($file, true),
+                'data' => $parseAsJson ? json_decode($file, true) : $file,
             ];
             return $memoryCache[$url]['data'];
         } catch (Exception $exception) {
@@ -105,25 +109,57 @@ function parseList($parts)
     return $path;
 }
 
+$ALLOWED_EXTENSIONS = [
+    'js' => 'application/javascript',
+    'css' => 'text/css',
+    'jpg' => 'image/jpeg',
+    'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'gif' => 'image/gif',
+    'xml' => 'application/xml',
+    'txt' => 'text/plain'
+];
+
+function getContentType($fileExtension) {
+    global $ALLOWED_EXTENSIONS;
+    return isset($ALLOWED_EXTENSIONS[$fileExtension]) ? $ALLOWED_EXTENSIONS[$fileExtension] : 'application/octet-stream';
+}
+
+function parseStatic($parts)
+{
+    $path = implode('/', $parts);
+    $ext = get_extension($path);
+    global $ALLOWED_EXTENSIONS;
+
+    if (array_key_exists($ext, $ALLOWED_EXTENSIONS)) {
+        return [$path, $ext];
+    }
+
+    return false;
+}
+
 function parsePath($path) {
     $parts = explode('/', strtolower($path));
     $category = array_shift($parts);
 
     switch ($category) {
-        default:
-            return false;
         case 'detail':
             return [$category, parseDetail($parts)];
         case 'list':
             return [$category, parseList($parts)];
+        case 'static':
+            return [$category, parseStatic($parts)];
     }
+
+    return false;
 }
 
 function responseJson($data)
 {
     http_response_code(200);
     header('Content-Type: application/json');
-    exit(json_encode($data));
+    echo json_encode($data);
+    exit();
 }
 
 function responseDetail($parsedPath, $baseUrl)
@@ -196,9 +232,34 @@ function responseList($path, $baseUrl)
     responseJson($fileData);
 }
 
+function responseStatic($args, $baseUrl)
+{
+    list($path, $ext) = $args;
+    $filePath = "./iadb-static/$path";
+    $fileUrl = "$baseUrl/$path";
+    $fileData = loadFile($filePath, false, time() - 3600, false);
+
+    if (!$fileData) {
+        $fileData = loadFile($fileUrl, $filePath, false, false);
+    }
+
+    if (!$fileData) {
+        http_response_code(404);
+        exit("404 Not found");
+    }
+
+    $contentType  = getContentType($ext);
+
+    http_response_code(200);
+    header("Content-Type: $contentType");
+    echo $fileData;
+    exit();
+}
+
 // Request handler
 
 $baseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/data";
+$staticBaseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/";
 
 $path = trim(isset($_GET['path']) ? $_GET['path'] : '', '/');
 
@@ -215,6 +276,9 @@ switch ($parsedPathWithCategory[0]) {
         break;
     case 'list':
         responseList($parsedPathWithCategory[1], $baseUrl);
+        break;
+    case 'static':
+        responseStatic($parsedPathWithCategory[1], $staticBaseUrl);
         break;
     default:
         http_response_code(404);
