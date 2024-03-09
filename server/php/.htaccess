@@ -1,0 +1,36 @@
+RewriteEngine On
+RewriteBase /
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?path=$1 [L,QSA]
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType application/json "access plus 1 day"
+</IfModule>
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE application/json
+
+    # Remove browser bugs (only needed for really old browsers)
+    BrowserMatch ^Mozilla/4 gzip-only-text/html
+    BrowserMatch ^Mozilla/4\.0[678] no-gzip
+    BrowserMatch \bMSIE !no-gzip !gzip-only-text/html
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set Cache-Control "max-age=86400, public"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_METHOD} GET
+    RewriteCond %{HTTP:If-Modified-Since} .+
+    RewriteCond %{HTTP:If-None-Match} !^.+$
+    RewriteCond %{HTTP:If-Modified-Since} ^(.+)$
+    RewriteCond %{TIME} -d
+    RewriteCond %1 -d
+    RewriteCond %{TIME} -t
+    RewriteCond %1 -t
+    RewriteRule .* - [L,R=304]
+</IfModule>
