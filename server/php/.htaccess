@@ -21,8 +21,10 @@
 
 <IfModule mod_expires.c>
     ExpiresActive On
-    ExpiresDefault "access plus 1 hour"
-    ExpiresByType application/json "access plus 1 day"
+    <If "%{HTTP_HOST} != 'localhost' && %{HTTP_HOST} != 'localhost:%{SERVER_PORT}'">
+        ExpiresDefault "access plus 1 hour"
+        ExpiresByType application/json "access plus 1 day"
+    </If>
 </IfModule>
 
 <IfModule mod_deflate.c>
@@ -35,5 +37,6 @@
 </IfModule>
 
 <IfModule mod_headers.c>
-    Header set Cache-Control "max-age=86400, public"
+    SetEnvIf Host "^localhost(:\d+)*$" no_cache
+    Header set Cache-Control "max-age=86400, public" env=!no_cache
 </IfModule>

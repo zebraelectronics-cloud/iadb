@@ -1,10 +1,13 @@
 <!DOCTYPE html>
+<!--suppress JSFileReferences -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Address Picker</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
           integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Option 1: Include in HTML -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.3.0/font/bootstrap-icons.css">
     <style>
         html, body {
             padding: 0;
@@ -15,93 +18,182 @@
         body {
             padding: 1rem;
         }
+
+        .link {
+            text-decoration: underline;
+            cursor: pointer;
+            user-select: none;
+        }
     </style>
 
     <script type="module">
-        import AddressApi from "https://iadb.fast-page.org/static/assets/js/address-api.js";
+        import AddressApi from "/static/assets/js/address-api.js";
 
-        const addressApi = new AddressApi();
-        console.log(await addressApi.loadCountries());
-
-        customElements.define("ap-loader",
-            class extends HTMLElement {
-                constructor() {
-                    super();
-                }
-
-                connectedCallback() {
-                    this.classList.add("spinner-border");
-                }
-
-                static get observedAttributes() {
-                    return ["size"];
-                }
-
-                attributeChangedCallback(attrName, oldValue, newValue) {
-                    if (attrName !== "size") {
-                        return;
-                    }
-
-                    if (newValue === oldValue) {
-                        return;
-                    }
-                    let className = `spinner-border-${oldValue}`
-                    if (this.classList.contains(className)) {
-                        this.classList.remove(className);
-                    }
-                    className = newValue && `spinner-border-${newValue}`;
-                    if (className && !this.classList.contains(className)) {
-                        this.classList.add(className);
-                    }
-                }
+        class DomUtils {
+            static option(value, label, disabled = false) {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = label;
+                option.disabled = disabled;
+                return option;
             }
-        );
 
-        class DOMUtils {
-            toggleVisibility(selector) {
-                document.querySelectorAll(selector).forEach(element => element.classList.toggle("d-none"));
+            static select(data, name) {
+                const select = document.createElement("select");
+                select.value = "";
+                select.className = "form-select";
+                select.options.add(DomUtils.option("", "Please select..."));
+                select.name = name;
+                data.forEach(({id, label}) => select.options.add(DomUtils.option(id, label)));
+                return select;
+            }
+
+            static textarea(name, rows = 3) {
+                const el = document.createElement("textarea");
+                el.name = name;
+                el.className = "form-control";
+                el.rows = rows;
+                return el;
             }
         }
 
-        const utils = new DOMUtils();
+        const addressApi = new AddressApi();
+        const context = {
+            state: [],
+        }
+
+        function showFieldLoader(show) {
+            const el = document.getElementById("field-loader");
+            const has = el.classList.contains("d-none");
+            if (show === has) {
+                el.classList.toggle("d-none");
+            }
+        }
+
+        function createTemplate(title, control) {
+            const template = document.getElementById("field-template").content.cloneNode(true);
+            const children = Array.from(template.childNodes);
+            const label = template.querySelector("#label");
+            label.textContent = title;
+            if (control) {
+                const container = template.querySelector("#control");
+                container.replaceChildren(control);
+            }
+            template.remove = () => {
+                children.forEach(v => v.remove());
+            }
+            return template;
+        }
+
+        function initInfo(info) {
+            context.state.forEach(s => s.dispose());
+            context.state = [];
+            const fieldset = document.getElementById("fieldset");
+
+            if (!info) {
+                info = {flow: {category: "address"}, format: "{AD}"};
+            }
+
+            switch (info.flow.category) {
+                case "address":
+                {
+                    const control = DomUtils.textarea("address");
+                    control.autofocus = true;
+                    const element = fieldset.appendChild(createTemplate("Address", control));
+                    context.state.push({
+                        dispose() {
+                            element.remove();
+                        }
+                    });
+                }
+
+            }
+        }
+
+
+        function initCountriesField() {
+            const field = createTemplate("Countries");
+            const control = field.querySelector("#control");
+
+            addressApi.countries().then(async data => {
+                const select = DomUtils.select(data, "country");
+                select.onchange = async () => {
+                    showFieldLoader(true);
+                    select.disabled = true;
+                    const info = await addressApi.countryInfo(select.value);
+                    select.disabled = false;
+                    showFieldLoader(false);
+                    initInfo(info);
+                };
+
+                control.replaceChildren(select);
+
+                const available = await addressApi.available();
+                if (available.length < 10) {
+                    const ulAvailableCountries = document.getElementById("available-countries");
+                    available.forEach(id => {
+                        const label = data.find(v => v.id === id)?.label;
+                        if (!label) {
+                            return;
+                        }
+                        const li = document.createElement("li");
+                        li.textContent = label;
+                        ulAvailableCountries.appendChild(li);
+                        li.onclick = (e) => {
+                            if (select.value === id) {
+                                return;
+                            }
+                            select.value = id;
+                            select.dispatchEvent(new Event("change"));
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                        };
+                        li.classList.add("link")
+                    })
+                    document.getElementById("available-alert").classList.remove("d-none");
+                }
+            })
+            return field;
+        }
 
         // entry point
         document.addEventListener("DOMContentLoaded", () => {
-            utils.toggleVisibility("#content-loader,#content")
+            const fieldset = document.getElementById("fieldset");
+            fieldset.appendChild(initCountriesField());
         }, true);
     </script>
 </head>
 <body data-bs-theme="dark">
-    <template id="ap-loader-template">
-        <style>
-            :host {
-                width: min-content;
-                height: min-content;
-            }
-        </style>
-        <div class="spinner-border"></div>
-    </template>
-    <template id="ap-field-template">
+    <template id="field-template">
         <div class="row mb-3">
-            <label class="col-sm-2 col-form-label"><slot name="label"></slot></label>
-            <div class="col-sm-10">
-                <slot name="control"></slot>
+            <label class="col-sm-3 col-form-label" id="label"></label>
+            <div class="col-sm-9 d-flex align-items-center" id="control">
+                <div class="spinner-border spinner-border-sm"></div>
             </div>
         </div>
     </template>
 
     <div class="d-flex w-100 h-100 align-items-center justify-content-center">
-        <ap-loader id="content-loader" id="content-loader"></ap-loader>
-        <div class="card col-xl-4 col-lg-6 col-md-9 col-sm-12 d-none" id="content">
+        <div class="card col-xl-4 col-lg-6 col-md-9 col-sm-12 shadow" id="content">
             <div class="card-header">
                 Address Picker
             </div>
             <div class="card-body">
                 <form class="mt-3">
                     <fieldset id="fieldset">
-                        <ap-field label="Countries" selector="list/countries"></ap-field>
                     </fieldset>
+                    <div class="d-flex align-items-center justify-content-center d-none" id="field-loader">
+                        <div class="spinner-border spinner-border-sm"></div>
+                    </div>
                 </form>
+            </div>
+            <div class="card-footer small" id="available-alert">
+                <div class="alert-heading d-flex gap-2 align-items-center">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Address Picker is currently available for the following countries.
+                    Please click to select.
+                </div>
+                <ul class="m-0 mt-2" id="available-countries"></ul>
             </div>
         </div>
     </div>

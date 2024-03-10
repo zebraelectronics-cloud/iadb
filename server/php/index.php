@@ -1,4 +1,7 @@
 <?php
+$requestHost = $_SERVER['HTTP_HOST'];
+$requestHostWithoutPort = strtolower(preg_replace('/:\d+$/', '', $requestHost));
+$isLocalHost = $requestHostWithoutPort === "localhost";
 
 // Utility functions
 function get_extension($path) {
@@ -78,6 +81,7 @@ function parseDetail($parts)
         case 'neighbourhoods':
         case 'streets':
         case 'buildings':
+        case 'doors':
             break;
         default:
             return false;
@@ -117,7 +121,8 @@ $ALLOWED_EXTENSIONS = [
     'png' => 'image/png',
     'gif' => 'image/gif',
     'xml' => 'application/xml',
-    'txt' => 'text/plain'
+    'txt' => 'text/plain',
+    'html' => 'text/html'
 ];
 
 function getContentType($fileExtension) {
@@ -216,9 +221,10 @@ function responseDetail($parsedPath, $baseUrl)
 
 function responseList($path, $baseUrl)
 {
-    $filePath = "./iadb-list/$path";
+    global $isLocalHost;
+    $filePath = $isLocalHost ? "$baseUrl/$path" : "./iadb-list/$path";
     $fileUrl = "$baseUrl/$path";
-    $fileData = loadFile($filePath, false, time() - 86400);
+    $fileData = loadFile($filePath, false, $isLocalHost ? false : time() - 86400);
 
     if (!$fileData) {
         $fileData = loadFile($fileUrl, $filePath);
@@ -234,10 +240,13 @@ function responseList($path, $baseUrl)
 
 function responseStatic($args, $baseUrl)
 {
+    global $isLocalHost;
+
     list($path, $ext) = $args;
-    $filePath = "./iadb-static/$path";
+
+    $filePath = $isLocalHost ? "$baseUrl/$path" : "./iadb-static/$path";
     $fileUrl = "$baseUrl/$path";
-    $fileData = loadFile($filePath, false, time() - 3600, false);
+    $fileData = loadFile($filePath, false, $isLocalHost ? false : time() - 3600, false);
 
     if (!$fileData) {
         $fileData = loadFile($fileUrl, $filePath, false, false);
@@ -258,8 +267,13 @@ function responseStatic($args, $baseUrl)
 
 // Request handler
 
-$baseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/data";
-$staticBaseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/";
+if ($isLocalHost) {
+    $baseUrl = "/iadb/data";
+    $staticBaseUrl = "/iadb";
+} else {
+    $baseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main/data";
+    $staticBaseUrl = "https://github.com/zebraelectronics-cloud/iadb/raw/main";
+}
 
 $path = trim(isset($_GET['path']) ? $_GET['path'] : '', '/');
 
