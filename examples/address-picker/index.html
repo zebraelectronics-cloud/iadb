@@ -24,17 +24,177 @@
             cursor: pointer;
             user-select: none;
         }
+
+        #fieldset:not(:disabled) > :last-child {
+            display: none !important;
+        }
+
+        .text-end {
+            text-align: end;
+        }
     </style>
 
+    <script type="text/javascript">
+        window.translations = {
+            "tr": {
+                "Country": "Ülke",
+                "State": "Eyalet",
+                "City": "Şehir",
+                "District": "İlçe",
+                "County": "Köy",
+                "Neighbourhood": "Mahalle",
+                "Street": "Cadde / Sokak / Bulvar / Meydan",
+                "Building": "Bina / Blok",
+                "Door": "İç Kapı No",
+                "Address": "Adres",
+                "yourAddress": "Adresiniz",
+                "pleaseSelect": "Lütfen seçiniz...",
+                "addressPicker": "Adres Seçici",
+                "availableOnly": "Adres Seçici şu an için sadece aşağıdaki ülkeler için kullanılabilir. Lütfen seçmek için tıklaynız.",
+                "somethingWentWrong": "Bir şeyler test gitti. Lütfen sayfayı yenileyin."
+            },
+            "en": {
+                "pleaseSelect": "Please select...",
+                "addressPicker": "Address Picker",
+                "yourAddress": "Your address",
+                "availableOnly": "Address Picker is currently available only for the following countries. Please click to select.",
+                "somethingWentWrong": "Something went wrong. Please refresh the page."
+            }
+        };
+
+        (function () {
+            let lang = navigator.language?.split("-")[0] ?? "en";
+            if (!(lang in translations)) {
+                lang = "en";
+            }
+            document.documentElement.lang = lang;
+
+            function applyTranslation(element) {
+                const key = element.dataset.i18nKey;
+                if (!key) {
+                    return;
+                }
+                element.textContent = translations[lang]?.[key] ?? key;
+            }
+
+            const observer = new MutationObserver(
+                mutations => {
+                    const selector = "[data-i18n-key]";
+                    const addedNodes = Array.from(new Set(
+                        mutations.flatMap(
+                            v => Array.from(v.addedNodes)
+                                .flatMap(v =>
+                                    Array.from(v.querySelectorAll?.(selector) ?? [])
+                                        .concat(v.matches?.(selector) ? v : [])
+                                )
+                        )
+                    ));
+                    if (!addedNodes.length) {
+                        return;
+                    }
+                    addedNodes.forEach(node => {
+                        applyTranslation(node);
+                    })
+                }
+            );
+            observer.observe(
+                document.documentElement,
+                {
+                    childList: true,
+                    subtree: true
+                }
+            );
+        })();
+
+    </script>
+
     <script type="module">
-        import AddressApi from "/static/assets/js/address-api.js";
+        import AddressApi, {ABORTED} from "/static/assets/js/address-api.js";
+
+        class EventManager {
+            listeners = new WeakMap();
+
+            remove(element) {
+                if (!this.listeners.has(element)) {
+                    return;
+                }
+
+                this.listeners.get(element)
+                    .forEach(([type, cb]) => element.removeEventListener(type, cb, true));
+                this.listeners.delete(element);
+            }
+
+            addEventListener(element, type, cb) {
+                element.addEventListener(type, cb, true);
+                if (!this.listeners.has(element)) {
+                    this.listeners.set(element, [[type, cb]]);
+                } else {
+                    this.listeners.get(element).push([type, cb]);
+                }
+            }
+        }
+
+        class PropertyBag {
+            static propertyMap = new WeakMap();
+
+            static getProperties(obj) {
+                const map = this.propertyMap;
+                if (!map.has(obj)) {
+                    map.set(obj, {});
+                }
+
+                return map.get(obj);
+            }
+
+            static getOrInit(obj, prop, factory) {
+                const props = this.getProperties(obj);
+                return props[prop] ?? (props[prop] = factory());
+            }
+        }
+
+        class DisableState {
+            constructor(element) {
+                this.ref = new WeakRef(element);
+                this.index = element.disabled ? 1 : 0;
+            }
+
+            push() {
+                this.index++;
+                const el = this.ref.deref();
+                if (!el) {
+                    return;
+                }
+                el.disabled = true;
+            }
+
+            pop() {
+                if (this.index < 1) {
+                    return;
+                }
+
+                if (!--this.index) {
+                    const el = this.ref.deref();
+                    if (!el) {
+                        return;
+                    }
+                    el.disabled = false;
+                }
+            }
+
+            set(disabled) {
+                disabled ? this.push() : this.pop();
+            }
+        }
 
         class DomUtils {
-            static option(value, label, disabled = false) {
+            static option(value, label, translate = false) {
                 const option = document.createElement("option");
                 option.value = value;
-                option.textContent = label;
-                option.disabled = disabled;
+                if (translate) {
+                    option.setAttribute("data-i18n-key", label);
+                } else {
+                    option.textContent = label;
+                }
                 return option;
             }
 
@@ -42,7 +202,7 @@
                 const select = document.createElement("select");
                 select.value = "";
                 select.className = "form-select";
-                select.options.add(DomUtils.option("", "Please select..."));
+                select.options.add(DomUtils.option("", "pleaseSelect", true));
                 select.name = name;
                 data.forEach(({id, label}) => select.options.add(DomUtils.option(id, label)));
                 return select;
@@ -57,141 +217,392 @@
             }
         }
 
-        const addressApi = new AddressApi();
-        const context = {
-            state: [],
-        }
-
-        function showFieldLoader(show) {
-            const el = document.getElementById("field-loader");
-            const has = el.classList.contains("d-none");
-            if (show === has) {
-                el.classList.toggle("d-none");
-            }
-        }
-
-        function createTemplate(title, control) {
-            const template = document.getElementById("field-template").content.cloneNode(true);
-            const children = Array.from(template.childNodes);
-            const label = template.querySelector("#label");
-            label.textContent = title;
-            if (control) {
-                const container = template.querySelector("#control");
-                container.replaceChildren(control);
-            }
-            template.remove = () => {
-                children.forEach(v => v.remove());
-            }
-            return template;
-        }
-
-        function initInfo(info) {
-            context.state.forEach(s => s.dispose());
-            context.state = [];
-            const fieldset = document.getElementById("fieldset");
-
-            if (!info) {
-                info = {flow: {category: "address"}, format: "{AD}"};
-            }
-
-            switch (info.flow.category) {
-                case "address":
-                {
-                    const control = DomUtils.textarea("address");
-                    control.autofocus = true;
-                    const element = fieldset.appendChild(createTemplate("Address", control));
-                    context.state.push({
-                        dispose() {
-                            element.remove();
-                        }
-                    });
-                }
-
-            }
-        }
-
-
-        function initCountriesField() {
-            const field = createTemplate("Countries");
-            const control = field.querySelector("#control");
-
-            addressApi.countries().then(async data => {
-                const select = DomUtils.select(data, "country");
-                select.onchange = async () => {
-                    showFieldLoader(true);
-                    select.disabled = true;
-                    const info = await addressApi.countryInfo(select.value);
-                    select.disabled = false;
-                    showFieldLoader(false);
-                    initInfo(info);
-                };
-
-                control.replaceChildren(select);
-
-                const available = await addressApi.available();
-                if (available.length < 10) {
-                    const ulAvailableCountries = document.getElementById("available-countries");
-                    available.forEach(id => {
-                        const label = data.find(v => v.id === id)?.label;
-                        if (!label) {
+        class AddressFieldController extends EventTarget {
+            /**
+             * @param fieldset {HTMLElement}
+             * @param addressApi {AddressApi}
+             */
+            constructor(fieldset, addressApi) {
+                super();
+                Reflect.ownKeys(Reflect.getPrototypeOf(this))
+                    .forEach(key => {
+                        if (key === "constructor") {
                             return;
                         }
-                        const li = document.createElement("li");
-                        li.textContent = label;
-                        ulAvailableCountries.appendChild(li);
-                        li.onclick = (e) => {
-                            if (select.value === id) {
-                                return;
-                            }
-                            select.value = id;
-                            select.dispatchEvent(new Event("change"));
-                            e.preventDefault();
-                            e.stopImmediatePropagation();
-                        };
-                        li.classList.add("link")
+                        const func = this[key];
+                        if (typeof func !== "function") {
+                            return;
+                        }
+                        this[key] = func.bind(this);
                     })
-                    document.getElementById("available-alert").classList.remove("d-none");
+                this.addressApi = addressApi;
+                this.fieldset = fieldset;
+                this.fieldInfo = AddressFieldController.createField();
+                this.eventManager = new EventManager();
+                this._sessions = new Set();
+            }
+
+            onChange(e) {}
+
+            disable(disabled) {
+                PropertyBag.getOrInit(this.fieldset, "disabled", () => new DisableState(this.fieldset))
+                    .set(disabled);
+            }
+
+            async useSession(session, cb) {
+                this._sessions.add(session);
+                try {
+                    return await cb(session);
+                } finally {
+                    this._sessions.delete(session);
                 }
-            })
-            return field;
+            }
+
+            /**
+             * @returns {AddressFieldController}
+             */
+            get next() {
+                return this._next;
+            }
+
+            set next(v) {
+                this._next?.detach();
+                this._next = v;
+                if (v) {
+                    v.parent = this;
+                    v.init();
+                }
+            }
+
+            get label() {
+                return this.fieldInfo.label.textContent;
+            }
+
+            set label(v) {
+                this.fieldInfo.label.dataset.i18nKey = v;
+            }
+
+            /**
+             * @returns {HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null}
+             */
+            get element() {
+                return this.fieldInfo.control.firstChild;
+            }
+
+            set element(v) {
+                this.eventManager.remove(this.element);
+                this.fieldInfo.control.replaceChildren(v);
+                if (v instanceof HTMLSelectElement) {
+                    this.eventManager.addEventListener(v, "change", this.onChange)
+                } else if (v instanceof HTMLTextAreaElement) {
+                    this.eventManager.addEventListener(v, "input", this.onChange)
+                }
+            }
+
+            get value() {
+                return this.element?.value;
+            }
+
+            set value(v) {
+                const element = this.element;
+                if (!element) {
+                    return;
+                }
+                element.value = v;
+                element.dispatchEvent(new Event("change"));
+            }
+
+            attach() {
+                this.fieldset.insertBefore(
+                    this.fieldInfo.container,
+                    this.fieldset.querySelector(":scope > :last-child")
+                );
+            }
+
+            detach() {
+                this.next?.detach();
+                this.fieldInfo.field.remove();
+                const sessions = [...this._sessions];
+                this._sessions.clear();
+                sessions.forEach(session => session.abort());
+            }
+
+            init() {
+                this.attach();
+            }
+
+            onError() {
+                const child = document.createElement("span");
+                child.dataset.i18nKey = "somethingWentWrong";
+                child.setAttribute("data-i18n-key", "somethingWentWrong");
+
+                const cardBody = this.fieldset.closest(".card");
+                cardBody.className = "alert alert-danger m-0";
+                cardBody.replaceChildren(child);
+            }
+
+            static createField() {
+                const container = document.getElementById("field-template").content.cloneNode(true);
+                const field = container.querySelector("[data-type='field']")
+                const label = container.querySelector("[data-type='label']");
+                const control = container.querySelector("[data-type='control']");
+
+                return {
+                    field,
+                    label,
+                    control,
+                    container
+                };
+            }
+        }
+
+        class FlowFieldController extends AddressFieldController {
+            constructor(flow, parentId, countryId, fieldset, addressApi) {
+                super(fieldset, addressApi);
+                this.flow = flow;
+                this.parentId = parentId;
+                this.countryId = countryId
+            }
+
+            submit() {
+                console.log("submit");
+            }
+
+            onChange(e) {
+                if (this.element instanceof HTMLTextAreaElement || !this.flow.next) {
+                    this.submit();
+                    return;
+                }
+
+                const id = e.target.value;
+                if (id === "") {
+                    this.next = null;
+                    return;
+                }
+
+                this.next = new FlowFieldController(
+                    this.flow.next,
+                    id,
+                    this.countryId,
+                    this.fieldset,
+                    this.addressApi
+                );
+            }
+
+            async init() {
+                try {
+                    this.disable(true);
+                    const {category, next} = this.flow;
+
+                    if (category === "address") {
+                        this.label = "Address";
+                        this.element = DomUtils.textarea("Address");
+                    } else {
+                        const data = await this.useSession(
+                            this.addressApi.createSession(),
+                            session => session.loadFlow(this.flow, this.countryId, this.parentId)
+                        );
+
+                        if (data === null) {
+                            return this.onError();
+                        }
+
+                        if (data === ABORTED) {
+                            return;
+                        }
+
+                        if (!data) {
+                            if (category === "doors") {
+                                return this.parent?.submit?.();
+                            }
+                            const name = category === "buildings" ? "Door" : "Address";
+                            this.element = DomUtils.textarea(name);
+                            this.label = name;
+                            return super.init();
+                        }
+
+                        if (data.length === 1 && next) {
+                            this.parent.next = new FlowFieldController(
+                                next,
+                                data[0].id,
+                                this.countryId,
+                                this.fieldset,
+                                this.addressApi
+                            );
+                            return;
+                        }
+
+                        const nameMap = {
+                            states: "State",
+                            cities: "City",
+                            districts: "District",
+                            counties: "County",
+                            neighbourhoods: "Neighbourhood",
+                            streets: "Street",
+                            buildings: "Building",
+                            doors: "Door",
+                            address: "Address"
+                        };
+
+                        this.label = nameMap[next.category];
+                        this.element = DomUtils.select(data, name);
+                    }
+
+                    super.init();
+                } finally {
+                    this.disable(false);
+                }
+            }
+        }
+
+        class CountryFieldController extends AddressFieldController {
+
+            async init() {
+                this.label = "Country";
+                const data = await this.useSession(
+                    this.addressApi.createSession(),
+                    session => session.countries(document.documentElement.lang)
+                );
+
+                if (!data || data === ABORTED) {
+                    this.onError();
+                    return;
+                }
+
+                this.element = DomUtils.select(data, "country");
+
+                this.dispatchEvent(new class extends Event {
+                    data = data;
+                    constructor() {
+                        super("data-ready");
+                    }
+                });
+
+                super.init();
+            }
+
+            async onChange(e) {
+                const id = e.target.value;
+                if (id === "") {
+                    this.next = null;
+                    return;
+                }
+                try {
+                    this.disable(true);
+                    this.info = await this.addressApi.countryInfo(id);
+                    if (this.info === false) {
+                        this.info = {flow: {category: "address"}, format: "{DO}"}
+                    }
+
+                    if (!this.info) {
+                        this.onError();
+                        return;
+                    }
+
+                    if (this.info === ABORTED) {
+                        this.next = null;
+                        return
+                    }
+
+                    this.next = new FlowFieldController(
+                        this.info.flow,
+                        id,
+                        id,
+                        this.fieldset,
+                        this.addressApi
+                    );
+
+                } finally {
+                    this.disable(false);
+
+                }
+            }
+
         }
 
         // entry point
-        document.addEventListener("DOMContentLoaded", () => {
+        document.addEventListener("DOMContentLoaded", async () => {
             const fieldset = document.getElementById("fieldset");
-            fieldset.appendChild(initCountriesField());
+
+            const observer = new MutationObserver(mutations => {
+                const selector = "select,input,textarea";
+                let element;
+
+                main:
+                for(const mutation of mutations) {
+                    for (const node of (mutation.addedNodes ?? [])) {
+                        element = node.matches?.(selector) ? node : node.querySelector?.(selector);
+                        if (element) {
+                            break main;
+                        }
+                    }
+                }
+
+                if (element) {
+                    element.focus();
+                }
+            });
+
+            observer.observe(fieldset, {childList: true, subtree: true});
+
+            const controller = new CountryFieldController(fieldset, new AddressApi());
+            controller.addEventListener("data-ready", async ({data}) => {
+                const available = await controller.addressApi.available();
+                if (available.length > 10) {
+                    return;
+                }
+                const ulAvailableCountries = document.getElementById("available-countries");
+                available.forEach(id => {
+                    const label = data.find(v => v.id === id)?.label;
+                    if (!label) {
+                        return;
+                    }
+                    const li = document.createElement("li");
+                    li.textContent = label;
+                    ulAvailableCountries.appendChild(li);
+                    li.onclick = (e) => {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        if (controller.value === id) {
+                            return;
+                        }
+                        controller.value = id;
+                    };
+                    li.classList.add("link")
+                })
+                document.getElementById("available-alert").classList.remove("d-none");
+            })
+            controller.init();
         }, true);
     </script>
 </head>
 <body data-bs-theme="dark">
     <template id="field-template">
-        <div class="row mb-3">
-            <label class="col-sm-3 col-form-label" id="label"></label>
-            <div class="col-sm-9 d-flex align-items-center" id="control">
+        <div class="row mb-3" data-type="field">
+            <label class="col-sm-4 col-form-label text-end" data-type="label" data-i18n-key=""></label>
+            <div class="col-sm-8 d-flex align-items-center" data-type="control">
                 <div class="spinner-border spinner-border-sm"></div>
             </div>
         </div>
     </template>
 
     <div class="d-flex w-100 h-100 align-items-center justify-content-center">
-        <div class="card col-xl-4 col-lg-6 col-md-9 col-sm-12 shadow" id="content">
-            <div class="card-header">
-                Address Picker
+        <div class="card col-sm-12 col-md-8 col-lg-6 col-xl-4 shadow" id="content">
+            <div class="card-header" data-i18n-key="addressPicker">
             </div>
             <div class="card-body">
                 <form class="mt-3">
                     <fieldset id="fieldset">
+                        <div class="d-flex align-items-center justify-content-center mt-3" id="field-loader">
+                            <div class="spinner-border spinner-border-sm"></div>
+                        </div>
                     </fieldset>
-                    <div class="d-flex align-items-center justify-content-center d-none" id="field-loader">
-                        <div class="spinner-border spinner-border-sm"></div>
-                    </div>
                 </form>
             </div>
-            <div class="card-footer small" id="available-alert">
+            <div class="card-footer small d-none" id="available-alert">
                 <div class="alert-heading d-flex gap-2 align-items-center">
                     <i class="bi bi-exclamation-triangle"></i>
-                    Address Picker is currently available for the following countries.
-                    Please click to select.
+                    <span data-i18n-key="availableOnly"></span>
                 </div>
                 <ul class="m-0 mt-2" id="available-countries"></ul>
             </div>
