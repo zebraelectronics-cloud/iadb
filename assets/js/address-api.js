@@ -30,7 +30,7 @@ async function loadJson(url, signal) {
         });
 }
 
-const defaultSchema = {item: "$[*]", id: "$[0]", value: "$[0]", label: "$[1]"};
+const defaultSchema = {item: "$[*]", id: "$[0]", value: "$[1]", label: "$[1]"};
 
 function evaluatePath(json, path, context, indexIfPath) {
     if (!path) {
@@ -69,6 +69,8 @@ function applySchema(json, schema, context) {
     })).sort((a, b) => (a.label ?? a.id).localeCompare(b.label ?? b.id))
 }
 
+const formatKeyExp = /(CY|STA|CI|DI|CO|NE|ST|BU|DO|AD)/g;
+const conditionKeyExp = /([&!])?(CY|STA|CI|DI|CO|NE|ST|BU|DO|AD)/g
 export default class AddressApi {
     constructor(baseUrl) {
         const url = baseUrl ?? new URL(import.meta.url).origin;
@@ -143,5 +145,48 @@ export default class AddressApi {
         }
 
         return CACHE[key] = applySchema(data, schema);
+    }
+
+    formatAddress(formatStr, formatArgs, exceptions) {
+        const args = {...formatArgs};
+        if (typeof exceptions === "object") {
+            Object.entries(args).forEach(([k,v]) => {
+                if (!(k in exceptions)) {
+                    return;
+                }
+
+                let exception = exceptions[k];
+                if (!exception) {
+                    return;
+                }
+
+                if (!Array.isArray(exception)) {
+                    exception = [exception];
+                }
+
+                if (exception.includes(v)) {
+                    delete args[k];
+                }
+            });
+        }
+
+        return formatStr.replace(/\{(?:([^:]+):)?(.+?)}/g, (_, condition, group) => {
+            if (condition) {
+                conditionKeyExp.lastIndex = 0;
+                let isValid = true;
+                let m;
+                while ((m = conditionKeyExp.exec(condition))) {
+                    isValid = (m[2] in args && args[m[2]] !== "") === ((m[1] ?? "&") === "&");
+                    if (!isValid) {
+                        break;
+                    }
+                }
+                if (!isValid) {
+                    return "";
+                }
+            }
+
+            return group.replace(formatKeyExp, (_, key) => args[key]?.toLocaleUpperCase(navigator.language));
+        })
     }
 }
