@@ -72,7 +72,7 @@ function applySchema(json, schema, context) {
 const formatKeyExp = /(CY|STA|CI|DI|CO|NE|ST|BU|DO|AD)/g;
 const conditionKeyExp = /([&!])?(CY|STA|CI|DI|CO|NE|ST|BU|DO|AD)/g
 
-export default class AddressApi {
+export class AddressApi {
     constructor(baseUrl) {
         const url = baseUrl ?? new URL(import.meta.url).origin;
         this.baseUrl = url.replace(/\/+$/, "");

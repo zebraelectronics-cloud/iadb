@@ -45,6 +45,7 @@
             case "zebraelectronics-cloud.github.io":
                 const xmlHttp = new XMLHttpRequest();
                 xmlHttp.onload = (e) => {
+                    console.log(e.target.responseText);
                     apiAddress = URL.createObjectURL(new Blob([e.target.responseText], {type: "text/javascript"}));
                 }
                 xmlHttp.open(
