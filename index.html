@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Loading...</title>
+    <style>
+        html, body, iframe {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+            border: none;
+            border-spacing: 0;
+            overflow: hidden;
+            border-radius: 0;
+        }
+    </style>
+</head>
+<body>
+<iframe title="page" id="frame"></iframe>
+<script type="text/javascript">
+    const frame = document.getElementById("frame");
+    frame.addEventListener("load", () => {
+        this.title = frame.contentWindow.document.title;
+    });
+
+    fetch("https://api.github.com/repos/zebraelectronics-cloud/iadb/contents/examples/address-picker/index.html")
+        .then(r => r.json())
+        .then(
+            v => (v.encoding === "base64"
+                ? fetch(`data:text/html;base64,${v.content}`).then(r => r.blob())
+                : new Blob([v.content]))
+        )
+        .then(blob => URL.createObjectURL(blob))
+        .then(url => (frame.src = url))
+</script>
+</body>
+</html>

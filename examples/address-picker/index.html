@@ -72,6 +72,7 @@
                 lang = "en";
             }
             document.documentElement.lang = lang;
+            document.title = translations[lang]?.addressPicker ?? "Address Picker";
 
             function applyTranslation(element) {
                 const key = element.dataset.i18nKey;
