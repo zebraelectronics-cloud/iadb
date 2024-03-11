@@ -21,7 +21,7 @@
 <script type="text/javascript">
     const frame = document.getElementById("frame");
     frame.addEventListener("load", () => {
-        this.title = frame.contentWindow.document.title;
+        document.title = frame.contentWindow.document.title;
     });
 
     fetch("https://api.github.com/repos/zebraelectronics-cloud/iadb/contents/examples/address-picker/index.html")

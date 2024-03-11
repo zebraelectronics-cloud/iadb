@@ -71,6 +71,7 @@ function applySchema(json, schema, context) {
 
 const formatKeyExp = /(CY|STA|CI|DI|CO|NE|ST|BU|DO|AD)/g;
 const conditionKeyExp = /([&!])?(CY|STA|CI|DI|CO|NE|ST|BU|DO|AD)/g
+
 export default class AddressApi {
     constructor(baseUrl) {
         const url = baseUrl ?? new URL(import.meta.url).origin;
@@ -189,4 +190,8 @@ export default class AddressApi {
             return group.replace(formatKeyExp, (_, key) => args[key]?.toLocaleUpperCase(navigator.language));
         })
     }
+}
+
+export class ServerlessAddressApi extends AddressApi {
+
 }
