@@ -83,8 +83,12 @@ export class AddressApi {
         delete this.__abortController;
     }
 
+    createInstance() {
+        return new AddressApi(this.baseUrl);
+    }
+
     createSession() {
-        const api = new AddressApi(this.baseUrl);
+        const api = this.createInstance();
         api.__abortController = new AbortController();
         return api;
     }
@@ -192,6 +196,42 @@ export class AddressApi {
     }
 }
 
+// Api for loading address data directly from GitHub
 export class ServerlessAddressApi extends AddressApi {
+    constructor() {
+        super("about:blank");
+    }
 
+    async list(path) {
+        const signal = this.__abortController?.signal;
+        return await loadJson(
+            `https://media.githubusercontent.com/media/zebraelectronics-cloud/iadb/main/data/${path}`,
+            this.__abortController?.signal
+        )
+    }
+
+    async detail(path) {
+        let [countryId, subject, id] = path.replace(/\.json$/, "").split(/\//g);
+        id = Number(id);
+        if (isNaN(id)) {
+            return false;
+        }
+
+        const index = await this.list(`${countryId}/${subject}/index.json`);
+        if (!Array.isArray(index) || !index.length) {
+            return false;
+        }
+
+        const element = index.find((v => v.min <= id && id < v.max));
+        if (!element) {
+            return false;
+        }
+
+        const list = await this.list(`${countryId}/${subject}/${element.fileName}`);
+        return list[id];
+    }
+
+    createInstance() {
+        return new ServerlessAddressApi();
+    }
 }

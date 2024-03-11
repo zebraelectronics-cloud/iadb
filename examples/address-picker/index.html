@@ -37,6 +37,7 @@
         importMap.type = "importmap";
         const url = new URL(window.top.location.href);
         const hostname = url.hostname.toLowerCase();
+        window.isServerless = false;
 
         let apiAddress;
         switch (hostname) {
@@ -45,15 +46,16 @@
             case "zebraelectronics-cloud.github.io":
                 const xmlHttp = new XMLHttpRequest();
                 xmlHttp.onload = (e) => {
-                    console.log(e.target.responseText);
                     apiAddress = URL.createObjectURL(new Blob([e.target.responseText], {type: "text/javascript"}));
                 }
                 xmlHttp.open(
                     "GET",
-                    "https://raw.githubusercontent.com/zebraelectronics-cloud/iadb/main/assets/js/address-api.js",
+                    //"https://raw.githubusercontent.com/zebraelectronics-cloud/iadb/main/assets/js/address-api.js",
+                    "/static/assets/js/address-api.js",
                     false
                 );
                 xmlHttp.send(null);
+                window.isServerless = true;
                 break;
             default:
                 apiAddress = "/static/assets/js/address-api.js";
@@ -148,7 +150,7 @@
     </script>
 
     <script type="module">
-        import AddressApi, {ABORTED, ServerlessAdressApi} from "address-api";
+        import {AddressApi, ServerlessAddressApi, ABORTED} from "address-api";
 
         class EventManager {
             listeners = new WeakMap();
@@ -683,7 +685,10 @@
 
             observer.observe(fieldset, {childList: true, subtree: true});
 
-            const controller = new CountryFieldController(fieldset, new AddressApi());
+            const controller = new CountryFieldController(
+                fieldset,
+                new (window.isServerless ? ServerlessAddressApi : AddressApi)()
+            );
             controller.addEventListener("data-ready", async ({data}) => {
                 const available = await controller.addressApi.available();
                 if (available.length > 10) {

@@ -24,13 +24,9 @@
         document.title = frame.contentWindow.document.title;
     });
 
-    fetch("https://api.github.com/repos/zebraelectronics-cloud/iadb/contents/examples/address-picker/index.html")
-        .then(r => r.json())
-        .then(
-            v => (v.encoding === "base64"
-                ? fetch(`data:text/html;base64,${v.content}`).then(r => r.blob())
-                : new Blob([v.content]))
-        )
+    fetch("https://raw.githubusercontent.com/zebraelectronics-cloud/iadb/main/examples/address-picker/index.html")
+        .then(r => r.text())
+        .then(r => new Blob([r], {type: "text/html"}))
         .then(blob => URL.createObjectURL(blob))
         .then(url => (frame.src = url))
 </script>
