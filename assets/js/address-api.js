@@ -128,6 +128,10 @@ export class AddressApi {
         return this.list(`${country}/info.json`);
     }
 
+    taxOfficesInfo(country) {
+        return this.list(`${country}/tax-offices-info.json`);
+    }
+
     async loadFlow({category, id}, countryId, parentId) {
         id ??= parentId;
         const key = `flow::${category}::${countryId}::${parentId}::${id}`;
@@ -193,6 +197,10 @@ export class AddressApi {
 
             return group.replace(formatKeyExp, (_, key) => args[key]?.toLocaleUpperCase(navigator.language));
         })
+    }
+
+    phoneNumberExamples() {
+        return this.list("phone-number-examples.json");
     }
 }
 

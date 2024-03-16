@@ -82,6 +82,7 @@ function parseDetail($parts)
         case 'streets':
         case 'buildings':
         case 'doors':
+        case 'tax-offices':
             break;
         default:
             return false;
